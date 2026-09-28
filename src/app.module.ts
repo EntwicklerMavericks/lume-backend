@@ -8,6 +8,8 @@ import { AuthModule } from './auth/auth.module';
 import { MailModule } from './mail/mail.module';
 import { CategoriesModule } from './categories/categories.module';
 import { ProductsModule } from './products/products.module';
+import { PaymentsModule } from './payments/payments.module';
+import { OrdersModule } from './orders/orders.module';
 import { APP_GUARD } from '@nestjs/core';
 import { JwtAuthGuard } from './common/guards/jwt-auth.guard';
 
@@ -22,6 +24,8 @@ import { JwtAuthGuard } from './common/guards/jwt-auth.guard';
     MailModule,
     CategoriesModule,
     ProductsModule,
+    PaymentsModule,
+    OrdersModule,
   ],
   controllers: [AppController],
   providers: [
@@ -33,4 +37,3 @@ import { JwtAuthGuard } from './common/guards/jwt-auth.guard';
   ],
 })
 export class AppModule {}
-
