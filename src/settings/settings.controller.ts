@@ -1,4 +1,4 @@
-import { Controller, Get, Put, Post, Body } from '@nestjs/common';
+import { Controller, Get, Put, Post, Body, Param } from '@nestjs/common';
 import { SettingsService } from './settings.service';
 import { UpdateSettingsDto } from './dto/update-settings.dto';
 import { CalculateShippingDto } from './dto/calculate-shipping.dto';
@@ -35,5 +35,11 @@ export class ShippingController {
   @Post('calculate')
   calculateShipping(@Body() dto: CalculateShippingDto) {
     return this.settingsService.calculateShipping(dto);
+  }
+
+  @Public()
+  @Get('cep/:cep')
+  lookupCep(@Param('cep') cep: string) {
+    return this.settingsService.lookupCep(cep);
   }
 }

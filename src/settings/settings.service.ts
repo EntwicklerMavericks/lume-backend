@@ -250,4 +250,64 @@ export class SettingsService {
 
     return { state: 'BR', city: 'Brasil' };
   }
+
+  /**
+   * Consulta dados de um CEP com múltiplos fallbacks (ViaCEP, BrasilAPI e Resolução Regional)
+   */
+  async lookupCep(rawCep: string) {
+    const clean = (rawCep || '').replace(/\D/g, '');
+    if (clean.length !== 8) {
+      throw new BadRequestException('CEP inválido. Deve conter 8 dígitos numéricos.');
+    }
+
+    // 1. Tentar ViaCEP via backend (sem CORS)
+    try {
+      const res = await fetch(`https://viacep.com.br/ws/${clean}/json/`, {
+        headers: { 'User-Agent': 'Lume-Store/1.0' },
+      });
+      if (res.ok) {
+        const data: any = await res.json();
+        if (!data.erro) {
+          return {
+            cep: data.cep || `${clean.slice(0, 5)}-${clean.slice(5)}`,
+            logradouro: data.logradouro || '',
+            complemento: data.complemento || '',
+            bairro: data.bairro || '',
+            localidade: data.localidade || '',
+            uf: data.uf || '',
+            erro: false,
+          };
+        }
+      }
+    } catch (_) {}
+
+    // 2. Tentar BrasilAPI como fallback
+    try {
+      const res2 = await fetch(`https://brasilapi.com.br/api/cep/v1/${clean}`);
+      if (res2.ok) {
+        const data2: any = await res2.json();
+        return {
+          cep: data2.cep ? `${data2.cep.slice(0, 5)}-${data2.cep.slice(5)}` : `${clean.slice(0, 5)}-${clean.slice(5)}`,
+          logradouro: data2.street || '',
+          complemento: '',
+          bairro: data2.neighborhood || '',
+          localidade: data2.city || '',
+          uf: data2.state || '',
+          erro: false,
+        };
+      }
+    } catch (_) {}
+
+    // 3. Fallback para resolução regional se ambas as APIs externas falharem
+    const region = this.resolveCepRegion(clean);
+    return {
+      cep: `${clean.slice(0, 5)}-${clean.slice(5)}`,
+      logradouro: '',
+      complemento: '',
+      bairro: '',
+      localidade: region.city,
+      uf: region.state,
+      erro: false,
+    };
+  }
 }
