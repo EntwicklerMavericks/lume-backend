@@ -101,8 +101,38 @@ export class MailService {
           this.logger.log(`[MailService:Resend] E-mail enviado com sucesso para ${options.to} (ID: ${data.id})`);
           return true;
         } else {
-          const errText = await res.text();
-          this.logger.error(`[MailService:Resend] Falha na API do Resend: ${res.status} - ${errText}`);
+          const errData: any = await res.json().catch(() => ({}));
+          this.logger.warn(`[MailService:Resend] Aviso da API do Resend: ${res.status} - ${errData?.message || JSON.stringify(errData)}`);
+
+          // Modo de teste do Resend (onboarding@resend.dev): Se o destinatário não for a conta cadastrada, redireciona para a conta do lojista/dev
+          if (res.status === 403 && fromEmail === 'onboarding@resend.dev' && options.to !== 'entwicklermavericks@gmail.com') {
+            this.logger.log(`[MailService:Resend] Redirecionando e-mail de teste para a conta verificada (entwicklermavericks@gmail.com)...`);
+            const retryRes = await fetch('https://api.resend.com/emails', {
+              method: 'POST',
+              headers: {
+                'Authorization': `Bearer ${resendApiKey}`,
+                'Content-Type': 'application/json',
+              },
+              body: JSON.stringify({
+                from: `${store.name} <${fromEmail}>`,
+                to: ['entwicklermavericks@gmail.com'],
+                subject: `[Teste para: ${options.to}] ${options.subject}`,
+                html: `
+                  <div style="background-color: #FEF3C7; border: 1px solid #F59E0B; padding: 12px; border-radius: 6px; margin-bottom: 20px; color: #92400E; font-size: 13px; font-family: sans-serif;">
+                    ℹ️ <strong>Modo de Teste Resend:</strong> Este e-mail foi gerado para <strong>${options.to}</strong> no checkout da loja, e entregue na sua conta (<code>entwicklermavericks@gmail.com</code>) por estar usando o remetente de teste (<code>onboarding@resend.dev</code>). Quando o domínio próprio estiver configurado, ele será entregue diretamente na caixa de entrada do cliente final!
+                  </div>
+                  ${options.html}
+                `,
+                text: options.text,
+              }),
+            });
+
+            if (retryRes.ok) {
+              const retryData: any = await retryRes.json();
+              this.logger.log(`[MailService:Resend] E-mail de teste entregue com sucesso em entwicklermavericks@gmail.com (ID: ${retryData.id})`);
+              return true;
+            }
+          }
         }
       } catch (err) {
         this.logger.error('[MailService:Resend] Erro ao disparar via Resend:', err);
