@@ -148,6 +148,9 @@ model Order {
   installments    Int?          @default(1)
   
   customerNotes   String?       @map("customer_notes") @db.Text
+  trackingCode    String?       @map("tracking_code")
+  shippedAt       DateTime?     @map("shipped_at")
+  deliveredAt     DateTime?     @map("delivered_at")
 
   userId          String?       @map("user_id")
   user            User?         @relation(fields: [userId], references: [id])

@@ -67,15 +67,23 @@ export class OrdersService {
     return order;
   }
 
-  async updateStatus(id: string, status: OrderStatusEnum) {
+  async updateStatus(id: string, status: OrderStatusEnum, trackingCode?: string) {
     const order = await this.findOne(id);
+
+    const updateData: any = {
+      status: status as any,
+      ...(status === OrderStatusEnum.PAID ? { paymentStatus: 'CONFIRMED' } : {}),
+      ...(status === OrderStatusEnum.SHIPPED ? { shippedAt: new Date() } : {}),
+      ...(status === OrderStatusEnum.DELIVERED ? { deliveredAt: new Date() } : {}),
+    };
+
+    if (trackingCode !== undefined) {
+      updateData.trackingCode = trackingCode ? trackingCode.trim() : null;
+    }
 
     return this.prisma.order.update({
       where: { id: order.id },
-      data: {
-        status: status as any,
-        ...(status === OrderStatusEnum.PAID ? { paymentStatus: 'CONFIRMED' } : {}),
-      },
+      data: updateData,
       include: {
         items: true,
       },
