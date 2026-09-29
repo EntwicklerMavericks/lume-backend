@@ -119,15 +119,44 @@ export class SettingsService {
     }
 
     const settings = await this.getSettings();
-    const originCep = (settings.postalCode || '01310-100').replace(/\D/g, '');
-    const originState = (settings.state || 'SP').toUpperCase();
+    let originCep = (settings.postalCode || '').replace(/\D/g, '');
+    let originState = (settings.state || '').trim().toUpperCase();
+
+    // Se o CEP foi informado mas o estado não, infere pelo CEP
+    if (originCep.length === 8 && !originState) {
+      originState = this.resolveCepRegion(originCep).state;
+    }
+    // Padrão de segurança se a loja ainda não salvou nenhum endereço
+    if (!originState) {
+      originState = 'SP';
+      originCep = '01310100';
+    }
 
     // Determina o estado/região de destino com base nas faixas de CEP brasileiras
     const destInfo = this.resolveCepRegion(rawDest);
 
-    // Ajusta o multiplicador de distância baseado na localização de destino
+    // Mapeamento das 5 macrorregiões do Brasil
+    const BRAZIL_REGIONS: Record<string, 'SE' | 'S' | 'CO' | 'NE' | 'N'> = {
+      SP: 'SE', RJ: 'SE', MG: 'SE', ES: 'SE',
+      PR: 'S', SC: 'S', RS: 'S',
+      DF: 'CO', GO: 'CO', MT: 'CO', MS: 'CO',
+      BA: 'NE', SE: 'NE', AL: 'NE', PE: 'NE', PB: 'NE', RN: 'NE', CE: 'NE', PI: 'NE', MA: 'NE',
+      AM: 'N', PA: 'N', RO: 'N', AC: 'N', RR: 'N', AP: 'N', TO: 'N',
+    };
+
+    // Matriz de distância geográfica entre macrorregiões brasileiras:
+    // 0: Mesma macrorregião | 1: Regiões vizinhas imediatas | 2: Distância média | 3: Longa distância
+    const REGION_DISTANCE: Record<string, Record<string, number>> = {
+      SE: { SE: 0, S: 1, CO: 1, NE: 2, N: 3 },
+      S:  { S: 0, SE: 1, CO: 1, NE: 3, N: 3 },
+      CO: { CO: 0, SE: 1, S: 1, N: 1, NE: 2 },
+      NE: { NE: 0, SE: 2, CO: 2, N: 2, S: 3 },
+      N:  { N: 0, CO: 1, NE: 2, SE: 3, S: 3 },
+    };
+
     const isSameState = destInfo.state === originState;
-    const isLocalMetro = isSameState && (rawDest.startsWith('01') || rawDest.startsWith('02') || rawDest.startsWith('03') || rawDest.startsWith('04') || rawDest.startsWith('05'));
+    // Mesma microrregião/região metropolitana (mesmo prefixo inicial de 2 dígitos)
+    const isLocalMetro = isSameState && originCep.length >= 2 && rawDest.slice(0, 2) === originCep.slice(0, 2);
 
     const pacBase = Number(settings.pacBaseRate) || 19.90;
     const sedexBase = Number(settings.sedexBaseRate) || 32.90;
@@ -140,37 +169,53 @@ export class SettingsService {
     let pacDeadline = '4 a 6 dias úteis';
     let sedexDeadline = '2 a 3 dias úteis';
 
-    if (isLocalMetro) {
-      pacPrice = Math.round(pacBase * 0.85 * 100) / 100;
-      sedexPrice = Math.round(sedexBase * 0.85 * 100) / 100;
-      pacDeadline = '2 a 3 dias úteis';
-      sedexDeadline = '1 a 2 dias úteis';
-    } else if (isSameState) {
-      pacPrice = pacBase;
-      sedexPrice = sedexBase;
-      pacDeadline = '3 a 5 dias úteis';
-      sedexDeadline = '1 a 2 dias úteis';
-    } else if (['RJ', 'MG', 'PR', 'SC', 'ES'].includes(destInfo.state)) {
-      pacPrice = Math.round((pacBase + 5.0) * 100) / 100;
-      sedexPrice = Math.round((sedexBase + 8.5) * 100) / 100;
-      pacDeadline = '5 a 7 dias úteis';
-      sedexDeadline = '2 a 3 dias úteis';
-    } else if (['RS', 'DF', 'GO', 'MS', 'MT', 'BA'].includes(destInfo.state)) {
-      pacPrice = Math.round((pacBase + 9.5) * 100) / 100;
-      sedexPrice = Math.round((sedexBase + 16.0) * 100) / 100;
-      pacDeadline = '6 a 9 dias úteis';
-      sedexDeadline = '3 a 4 dias úteis';
-    } else if (['PE', 'CE', 'RN', 'PB', 'AL', 'SE', 'PI', 'MA'].includes(destInfo.state)) {
-      pacPrice = Math.round((pacBase + 14.0) * 100) / 100;
-      sedexPrice = Math.round((sedexBase + 24.0) * 100) / 100;
-      pacDeadline = '7 a 11 dias úteis';
-      sedexDeadline = '3 a 5 dias úteis';
+    if (isSameState) {
+      if (isLocalMetro) {
+        // Entrega expressa metropolitana com 15% de desconto
+        pacPrice = Math.round(pacBase * 0.85 * 100) / 100;
+        sedexPrice = Math.round(sedexBase * 0.85 * 100) / 100;
+        pacDeadline = '2 a 3 dias úteis';
+        sedexDeadline = '1 a 2 dias úteis';
+      } else {
+        // Estadual padrão (capital/interior)
+        pacPrice = pacBase;
+        sedexPrice = sedexBase;
+        pacDeadline = '3 a 5 dias úteis';
+        sedexDeadline = '1 a 2 dias úteis';
+      }
     } else {
-      // Norte: AM, PA, RO, AC, RR, AP, TO
-      pacPrice = Math.round((pacBase + 18.0) * 100) / 100;
-      sedexPrice = Math.round((sedexBase + 34.0) * 100) / 100;
-      pacDeadline = '9 a 14 dias úteis';
-      sedexDeadline = '4 a 6 dias úteis';
+      // Cálculo interestadual dinâmico baseado na distância entre o estado da loja e do cliente
+      const originRegion = BRAZIL_REGIONS[originState] || 'SE';
+      const destRegion = BRAZIL_REGIONS[destInfo.state] || 'SE';
+      const distanceLevel = REGION_DISTANCE[originRegion]?.[destRegion] ?? 2;
+
+      switch (distanceLevel) {
+        case 0: // Mesma Macrorregião (ex: SP <-> RJ, ou BA <-> PE)
+          pacPrice = Math.round((pacBase + 5.0) * 100) / 100;
+          sedexPrice = Math.round((sedexBase + 8.5) * 100) / 100;
+          pacDeadline = '4 a 6 dias úteis';
+          sedexDeadline = '2 a 3 dias úteis';
+          break;
+        case 1: // Regiões vizinhas imediatas (ex: Sudeste <-> Sul, Sudeste <-> Centro-Oeste, Norte <-> Centro-Oeste)
+          pacPrice = Math.round((pacBase + 9.5) * 100) / 100;
+          sedexPrice = Math.round((sedexBase + 16.0) * 100) / 100;
+          pacDeadline = '5 a 8 dias úteis';
+          sedexDeadline = '2 a 4 dias úteis';
+          break;
+        case 2: // Distância intermediária (ex: Sudeste <-> Nordeste, Centro-Oeste <-> Nordeste)
+          pacPrice = Math.round((pacBase + 14.0) * 100) / 100;
+          sedexPrice = Math.round((sedexBase + 24.0) * 100) / 100;
+          pacDeadline = '7 a 11 dias úteis';
+          sedexDeadline = '3 a 5 dias úteis';
+          break;
+        case 3: // Longa distância continental (ex: Sul <-> Norte, Sul <-> Nordeste, Sudeste <-> Norte extremo)
+        default:
+          pacPrice = Math.round((pacBase + 18.0) * 100) / 100;
+          sedexPrice = Math.round((sedexBase + 34.0) * 100) / 100;
+          pacDeadline = '9 a 14 dias úteis';
+          sedexDeadline = '4 a 6 dias úteis';
+          break;
+      }
     }
 
     const options: ShippingOption[] = [
@@ -198,10 +243,10 @@ export class SettingsService {
 
     return {
       origin: {
-        postalCode: `${originCep.slice(0, 5)}-${originCep.slice(5)}`,
-        street: settings.street,
-        city: settings.city,
-        state: settings.state,
+        postalCode: originCep.length === 8 ? `${originCep.slice(0, 5)}-${originCep.slice(5)}` : (settings.postalCode || ''),
+        street: settings.street || '',
+        city: settings.city || 'Origem',
+        state: originState,
       },
       destination: {
         postalCode: `${rawDest.slice(0, 5)}-${rawDest.slice(5)}`,
