@@ -3,6 +3,7 @@ import { PrismaService } from '../prisma/prisma.service';
 import { AsaasService } from './asaas.service';
 import { CheckoutDto } from './dto/checkout.dto';
 import { ConfigService } from '@nestjs/config';
+import { MailService } from '../mail/mail.service';
 
 @Injectable()
 export class PaymentsService {
@@ -12,6 +13,7 @@ export class PaymentsService {
     private prisma: PrismaService,
     private asaasService: AsaasService,
     private configService: ConfigService,
+    private mailService: MailService,
   ) {}
 
   /**
@@ -103,6 +105,11 @@ export class PaymentsService {
         include: {
           items: true,
         },
+      });
+
+      // Dispara e-mail de confirmação de pedido com instruções do PIX em segundo plano
+      this.mailService.sendOrderCreated(order).catch((err) => {
+        this.logger.error(`[MailService] Falha ao enviar e-mail do pedido #${order.orderNumber}:`, err);
       });
 
       return {
@@ -199,6 +206,18 @@ export class PaymentsService {
         },
       });
 
+      // Dispara e-mail de pedido criado
+      this.mailService.sendOrderCreated(order).catch((err) => {
+        this.logger.error(`[MailService] Falha ao enviar e-mail do pedido #${order.orderNumber}:`, err);
+      });
+
+      // Se o cartão foi aprovado imediatamente, dispara e-mail de pagamento confirmado
+      if (order.status === 'PAID') {
+        this.mailService.sendPaymentConfirmed(order).catch((err) => {
+          this.logger.error(`[MailService] Falha ao enviar e-mail de pagamento confirmado #${order.orderNumber}:`, err);
+        });
+      }
+
       return {
         success: true,
         orderId: order.id,
@@ -262,6 +281,11 @@ export class PaymentsService {
           include: { items: true },
         });
 
+        // Notifica cliente por e-mail que o pagamento foi confirmado
+        this.mailService.sendPaymentConfirmed(updated).catch((err) => {
+          this.logger.error(`[MailService] Falha ao enviar e-mail de pagamento confirmado #${updated.orderNumber}:`, err);
+        });
+
         return {
           orderId: updated.id,
           orderNumber: updated.orderNumber,
@@ -323,6 +347,11 @@ export class PaymentsService {
 
     this.logger.log(`[Simulador] Pagamento do pedido #${updated.orderNumber} aprovado com sucesso para testes.`);
 
+    // Dispara e-mail de pagamento confirmado
+    this.mailService.sendPaymentConfirmed(updated).catch((err) => {
+      this.logger.error(`[MailService] Falha ao enviar e-mail de confirmação de pagamento simulado #${updated.orderNumber}:`, err);
+    });
+
     return {
       success: true,
       message: 'Pagamento simulado com sucesso!',
@@ -365,14 +394,20 @@ export class PaymentsService {
     }
 
     if (event === 'PAYMENT_CONFIRMED' || event === 'PAYMENT_RECEIVED') {
-      await this.prisma.order.update({
+      const updated = await this.prisma.order.update({
         where: { id: order.id },
         data: {
           status: 'PAID',
           paymentStatus: 'CONFIRMED',
         },
+        include: { items: true },
       });
       this.logger.log(`[Webhook Asaas] Pedido #${order.orderNumber} atualizado para PAGO`);
+
+      // Dispara e-mail de pagamento confirmado via Webhook
+      this.mailService.sendPaymentConfirmed(updated).catch((err) => {
+        this.logger.error(`[MailService] Falha ao enviar e-mail de pagamento confirmado #${updated.orderNumber}:`, err);
+      });
     } else if (event === 'PAYMENT_OVERDUE') {
       await this.prisma.order.update({
         where: { id: order.id },

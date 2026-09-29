@@ -1,10 +1,14 @@
 import { Injectable, NotFoundException } from '@nestjs/common';
 import { PrismaService } from '../prisma/prisma.service';
 import { OrderStatusEnum } from './dto/update-order-status.dto';
+import { MailService } from '../mail/mail.service';
 
 @Injectable()
 export class OrdersService {
-  constructor(private prisma: PrismaService) {}
+  constructor(
+    private prisma: PrismaService,
+    private mailService: MailService,
+  ) {}
 
   async findAll(options?: { status?: string; search?: string; limit?: number; offset?: number }) {
     const where: any = {};
@@ -81,13 +85,26 @@ export class OrdersService {
       updateData.trackingCode = trackingCode ? trackingCode.trim() : null;
     }
 
-    return this.prisma.order.update({
+    const updated = await this.prisma.order.update({
       where: { id: order.id },
       data: updateData,
       include: {
         items: true,
       },
     });
+
+    // Se o pedido foi despachado ou código de rastreamento adicionado, dispara e-mail de rastreio
+    if (status === OrderStatusEnum.SHIPPED || (trackingCode && trackingCode !== order.trackingCode)) {
+      this.mailService.sendOrderShipped(updated).catch((err) => {
+        console.error(`[MailService] Falha ao enviar e-mail de pedido despachado #${updated.orderNumber}:`, err);
+      });
+    } else if (status === OrderStatusEnum.PAID && order.status !== 'PAID') {
+      this.mailService.sendPaymentConfirmed(updated).catch((err) => {
+        console.error(`[MailService] Falha ao enviar e-mail de pagamento confirmado #${updated.orderNumber}:`, err);
+      });
+    }
+
+    return updated;
   }
 
   async getStats() {
