@@ -231,13 +231,16 @@ export class PaymentsService {
       throw new NotFoundException('Pedido não encontrado.');
     }
 
-    // Se já está pago, retorna imediatamente
-    if (order.status === 'PAID') {
+    // Se já está pago ou em etapas posteriores, retorna imediatamente
+    if (['PAID', 'PREPARING', 'SHIPPED', 'DELIVERED'].includes(order.status)) {
       return {
         orderId: order.id,
         orderNumber: order.orderNumber,
         status: order.status,
         isPaid: true,
+        trackingCode: order.trackingCode,
+        shippedAt: order.shippedAt,
+        deliveredAt: order.deliveredAt,
         total: order.total,
         paymentMethod: order.paymentMethod,
         items: order.items,
@@ -262,6 +265,9 @@ export class PaymentsService {
           orderNumber: updated.orderNumber,
           status: updated.status,
           isPaid: true,
+          trackingCode: updated.trackingCode,
+          shippedAt: updated.shippedAt,
+          deliveredAt: updated.deliveredAt,
           total: updated.total,
           paymentMethod: updated.paymentMethod,
           items: updated.items,
@@ -274,6 +280,9 @@ export class PaymentsService {
       orderNumber: order.orderNumber,
       status: order.status,
       isPaid: false,
+      trackingCode: order.trackingCode,
+      shippedAt: order.shippedAt,
+      deliveredAt: order.deliveredAt,
       total: order.total,
       paymentMethod: order.paymentMethod,
       pix: order.paymentMethod === 'PIX' ? {
