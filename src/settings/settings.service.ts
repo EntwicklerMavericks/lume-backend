@@ -132,8 +132,26 @@ export class SettingsService {
       originCep = '01310100';
     }
 
-    // Determina o estado/região de destino com base nas faixas de CEP brasileiras
-    const destInfo = this.resolveCepRegion(rawDest);
+    // Busca informações reais do CEP de destino (cidade e UF reais via ViaCEP / BrasilAPI)
+    let destCity = dto.destinationCity?.trim() || '';
+    let destState = (dto.destinationState?.trim() || '').toUpperCase();
+
+    if (!destCity || !destState) {
+      try {
+        const cepData = await this.lookupCep(rawDest);
+        if (cepData && !cepData.erro && cepData.localidade) {
+          destCity = cepData.localidade;
+          destState = (cepData.uf || '').toUpperCase();
+        }
+      } catch (_) {}
+    }
+
+    // Fallback inteligente caso as APIs de CEP estejam indisponíveis
+    if (!destCity || !destState) {
+      const fallbackRegion = this.resolveCepRegion(rawDest);
+      destCity = destCity || fallbackRegion.city;
+      destState = destState || fallbackRegion.state;
+    }
 
     // Mapeamento das 5 macrorregiões do Brasil
     const BRAZIL_REGIONS: Record<string, 'SE' | 'S' | 'CO' | 'NE' | 'N'> = {
@@ -154,7 +172,7 @@ export class SettingsService {
       N:  { N: 0, CO: 1, NE: 2, SE: 3, S: 3 },
     };
 
-    const isSameState = destInfo.state === originState;
+    const isSameState = destState === originState;
     // Mesma microrregião/região metropolitana (mesmo prefixo inicial de 2 dígitos)
     const isLocalMetro = isSameState && originCep.length >= 2 && rawDest.slice(0, 2) === originCep.slice(0, 2);
 
@@ -186,7 +204,7 @@ export class SettingsService {
     } else {
       // Cálculo interestadual dinâmico baseado na distância entre o estado da loja e do cliente
       const originRegion = BRAZIL_REGIONS[originState] || 'SE';
-      const destRegion = BRAZIL_REGIONS[destInfo.state] || 'SE';
+      const destRegion = BRAZIL_REGIONS[destState] || 'SE';
       const distanceLevel = REGION_DISTANCE[originRegion]?.[destRegion] ?? 2;
 
       switch (distanceLevel) {
@@ -250,8 +268,8 @@ export class SettingsService {
       },
       destination: {
         postalCode: `${rawDest.slice(0, 5)}-${rawDest.slice(5)}`,
-        city: destInfo.city,
-        state: destInfo.state,
+        city: destCity,
+        state: destState,
       },
       freeShippingQualified: isFreeQualified,
       freeShippingThreshold: freeMin,

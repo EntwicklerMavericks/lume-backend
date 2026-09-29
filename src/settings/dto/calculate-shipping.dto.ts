@@ -9,4 +9,12 @@ export class CalculateShippingDto {
   @IsNumber()
   @IsPositive()
   subtotal?: number;
+
+  @IsOptional()
+  @IsString()
+  destinationCity?: string;
+
+  @IsOptional()
+  @IsString()
+  destinationState?: string;
 }
