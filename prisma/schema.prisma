@@ -131,6 +131,7 @@ model Order {
   // Financial
   subtotal        Decimal       @db.Decimal(10, 2)
   shippingCost    Decimal       @default(0) @map("shipping_cost") @db.Decimal(10, 2)
+  shippingMethod  String?       @map("shipping_method")
   discount        Decimal       @default(0) @db.Decimal(10, 2)
   total           Decimal       @db.Decimal(10, 2)
   
@@ -185,4 +186,25 @@ model OrderItem {
   @@index([orderId])
   @@index([productId])
   @@map("order_items")
+}
+
+model StoreSettings {
+  id              String   @id @default("default")
+  storeName       String   @default("Lume Store") @map("store_name")
+  email           String   @default("contato@lumestore.com.br")
+  phone           String   @default("(11) 99999-9999")
+  postalCode      String   @default("01310-100") @map("postal_code")
+  street          String   @default("Avenida Paulista")
+  number          String   @default("1000")
+  complement      String?  @default("")
+  neighborhood    String   @default("Bela Vista")
+  city            String   @default("São Paulo")
+  state           String   @default("SP")
+  pacBaseRate     Decimal  @default(19.90) @map("pac_base_rate") @db.Decimal(10, 2)
+  sedexBaseRate   Decimal  @default(32.90) @map("sedex_base_rate") @db.Decimal(10, 2)
+  freeShippingMin Decimal  @default(299.00) @map("free_shipping_min") @db.Decimal(10, 2)
+  createdAt       DateTime @default(now()) @map("created_at")
+  updatedAt       DateTime @updatedAt @map("updated_at")
+
+  @@map("store_settings")
 }

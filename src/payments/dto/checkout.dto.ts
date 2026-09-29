@@ -133,6 +133,15 @@ export class CheckoutDto {
   installments?: number;
 
   @IsOptional()
+  @IsNumber()
+  @Min(0)
+  shippingCost?: number;
+
+  @IsOptional()
+  @IsString()
+  shippingMethod?: string;
+
+  @IsOptional()
   @IsString()
   customerNotes?: string;
 

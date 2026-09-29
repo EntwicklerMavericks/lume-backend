@@ -24,8 +24,8 @@ export class PaymentsService {
 
     // 1. Calcular subtotal e total
     const subtotal = dto.items.reduce((acc, item) => acc + item.price * item.quantity, 0);
-    const shippingCost = 0; // Frete Grátis promocional ou calculado
-    const total = subtotal + shippingCost;
+    const shippingCost = dto.shippingCost !== undefined ? Math.max(0, Number(dto.shippingCost)) : 0;
+    const total = Math.round((subtotal + shippingCost) * 100) / 100;
 
     // 2. Gerar número legível do pedido (Ex: LUM-839201)
     const randomSuffix = Math.floor(1000 + Math.random() * 9000);
@@ -74,6 +74,7 @@ export class PaymentsService {
           state: dto.address.state,
           subtotal,
           shippingCost,
+          shippingMethod: dto.shippingMethod || (shippingCost > 0 ? 'Correios' : 'Frete Grátis'),
           total,
           paymentMethod: 'PIX',
           status: 'PENDING_PAYMENT',
@@ -169,6 +170,7 @@ export class PaymentsService {
           state: dto.address.state,
           subtotal,
           shippingCost,
+          shippingMethod: dto.shippingMethod || (shippingCost > 0 ? 'Correios' : 'Frete Grátis'),
           total,
           paymentMethod: 'CREDIT_CARD',
           status: isApproved ? 'PAID' : 'PENDING_PAYMENT',
