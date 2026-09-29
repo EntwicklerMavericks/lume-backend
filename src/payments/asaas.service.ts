@@ -49,7 +49,7 @@ export class AsaasService {
     this.baseUrl =
       this.environment === 'production'
         ? 'https://api.asaas.com/v3'
-        : 'https://sandbox.asaas.com/api/v3';
+        : 'https://api-sandbox.asaas.com/v3';
 
     // Se chave válida estiver configurada (iniciando com $aact_ ou tamanho suficiente)
     this.isLive =
@@ -65,6 +65,14 @@ export class AsaasService {
         `[Asaas] Chave de API não informada ou de exemplo. Ativando simulador Sandbox Asaas para desenvolvimento local.`,
       );
     }
+  }
+
+  private getHeaders(): Record<string, string> {
+    return {
+      'User-Agent': 'Lume-Store/1.0',
+      'Content-Type': 'application/json',
+      access_token: this.apiKey,
+    };
   }
 
   getIsLive(): boolean {
@@ -85,9 +93,7 @@ export class AsaasService {
     try {
       // 1. Tentar localizar cliente por CPF/CNPJ
       const searchRes = await fetch(`${this.baseUrl}/customers?cpfCnpj=${cleanCpf}`, {
-        headers: {
-          access_token: this.apiKey,
-        },
+        headers: this.getHeaders(),
       });
 
       if (searchRes.ok) {
@@ -102,10 +108,7 @@ export class AsaasService {
       // 2. Se não encontrou, criar novo cliente
       const createRes = await fetch(`${this.baseUrl}/customers`, {
         method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-          access_token: this.apiKey,
-        },
+        headers: this.getHeaders(),
         body: JSON.stringify({
           name: input.name,
           email: input.email,
@@ -172,10 +175,7 @@ export class AsaasService {
       // 1. Criar cobrança no Asaas
       const paymentRes = await fetch(`${this.baseUrl}/payments`, {
         method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-          access_token: this.apiKey,
-        },
+        headers: this.getHeaders(),
         body: JSON.stringify({
           customer: params.customerId,
           billingType: 'PIX',
@@ -195,17 +195,24 @@ export class AsaasService {
 
       const paymentId = paymentData.id;
 
-      // 2. Buscar o QR Code dinâmico do Asaas
-      const qrRes = await fetch(`${this.baseUrl}/payments/${paymentId}/pixQrCode`, {
-        headers: {
-          access_token: this.apiKey,
-        },
-      });
+      // 2. Buscar o QR Code dinâmico do Asaas (com retry de até 4 tentativas caso esteja registrando)
+      let qrData: any = null;
+      for (let attempt = 1; attempt <= 4; attempt++) {
+        try {
+          const qrRes = await fetch(`${this.baseUrl}/payments/${paymentId}/pixQrCode`, {
+            headers: this.getHeaders(),
+          });
+          if (qrRes.ok) {
+            qrData = await qrRes.json();
+            if (qrData.encodedImage && qrData.payload) break;
+          }
+        } catch (_) {}
+        await new Promise((r) => setTimeout(r, 800));
+      }
 
-      const qrData = await qrRes.json();
-      if (!qrRes.ok) {
-        this.logger.error(`[Asaas] Erro ao buscar QR Code PIX: ${JSON.stringify(qrData)}`);
-        throw new Error('Erro ao obter QR Code do Asaas');
+      if (!qrData || !qrData.encodedImage) {
+        this.logger.error(`[Asaas] Erro ao buscar QR Code PIX após tentativas: ${JSON.stringify(qrData)}`);
+        throw new Error('Erro ao obter QR Code do Asaas. Tente novamente em instantes.');
       }
 
       return {
@@ -324,10 +331,7 @@ export class AsaasService {
 
       const res = await fetch(`${this.baseUrl}/payments`, {
         method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-          access_token: this.apiKey,
-        },
+        headers: this.getHeaders(),
         body: JSON.stringify(payload),
       });
 
@@ -372,9 +376,7 @@ export class AsaasService {
 
     try {
       const res = await fetch(`${this.baseUrl}/payments/${paymentId}`, {
-        headers: {
-          access_token: this.apiKey,
-        },
+        headers: this.getHeaders(),
       });
 
       if (!res.ok) {
