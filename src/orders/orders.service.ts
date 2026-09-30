@@ -98,6 +98,10 @@ export class OrdersService {
       this.mailService.sendOrderShipped(updated).catch((err) => {
         console.error(`[MailService] Falha ao enviar e-mail de pedido despachado #${updated.orderNumber}:`, err);
       });
+    } else if (status === OrderStatusEnum.DELIVERED) {
+      this.mailService.sendOrderDelivered(updated).catch((err) => {
+        console.error(`[MailService] Falha ao enviar e-mail de pedido entregue #${updated.orderNumber}:`, err);
+      });
     } else if (status === OrderStatusEnum.PAID && order.status !== 'PAID') {
       this.mailService.sendPaymentConfirmed(updated).catch((err) => {
         console.error(`[MailService] Falha ao enviar e-mail de pagamento confirmado #${updated.orderNumber}:`, err);

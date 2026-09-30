@@ -55,15 +55,21 @@ export class MailService {
       const settings = await this.prisma.storeSettings.findUnique({
         where: { id: 'default' },
       });
+      const name = settings?.storeName?.trim() && settings.storeName !== 'Lume Store'
+        ? settings.storeName.trim()
+        : (this.configService.get<string>('STORE_NAME') || 'Oliveira');
+
+      const email = settings?.email?.trim() || this.configService.get<string>('STORE_EMAIL') || 'contato@oliveiramoda.com.br';
+
       return {
-        name: settings?.storeName || 'Lume Store',
-        email: settings?.email || 'contato@lumestore.com.br',
+        name,
+        email,
         phone: settings?.phone || '',
       };
     } catch (_) {
       return {
-        name: 'Lume Store',
-        email: 'contato@lumestore.com.br',
+        name: this.configService.get<string>('STORE_NAME') || 'Oliveira',
+        email: 'contato@oliveiramoda.com.br',
         phone: '',
       };
     }
@@ -324,6 +330,81 @@ export class MailService {
     return this.sendMail({
       to: order.customerEmail,
       subject: `Seu pedido #${order.orderNumber} foi despachado! 📦 | ${store.name}`,
+      html,
+    });
+  }
+
+  /**
+   * E-mail 4: Pedido Entregue com Sucesso! 🛍️✨
+   */
+  async sendOrderDelivered(order: any): Promise<boolean> {
+    if (!order || !order.customerEmail) return false;
+
+    const store = await this.getStoreInfo();
+
+    const itemsHtml = (order.items || []).map((item: any) => `
+      <tr>
+        <td style="padding: 10px; border-bottom: 1px solid #1E293B; color: #F8FAFC; font-size: 14px;">
+          <strong>${item.name}</strong>
+          ${item.size ? `<br><span style="font-size: 12px; color: #94A3B8;">Tamanho: ${item.size}</span>` : ''}
+          ${item.color ? `<span style="font-size: 12px; color: #94A3B8;"> | Cor: ${item.color}</span>` : ''}
+        </td>
+        <td style="padding: 10px; border-bottom: 1px solid #1E293B; color: #94A3B8; text-align: center; font-size: 14px;">
+          ${item.quantity}x
+        </td>
+      </tr>
+    `).join('');
+
+    const html = this.buildBaseEmailLayout({
+      storeName: store.name,
+      title: `Pedido Entregue! 🛍️✨`,
+      subtitle: `Olá, ${order.customerName.split(' ')[0]}! O seu pedido #${order.orderNumber} foi entregue com sucesso.`,
+      content: `
+        <div style="background-color: #0F172A; border-left: 4px solid #4ADE80; border-radius: 6px; padding: 20px; margin: 20px 0;">
+          <p style="color: #4ADE80; margin: 0 0 6px 0; font-weight: bold; font-size: 16px;">
+            🎉 Encomenda entregue no seu endereço!
+          </p>
+          <p style="color: #CBD5E1; margin: 0; font-size: 14px; line-height: 1.6;">
+            Esperamos que você ame as suas novas peças! Cada produto foi embalado com muito carinho para oferecer a você a melhor experiência em estilo, conforto e performance.
+          </p>
+        </div>
+
+        ${itemsHtml ? `
+          <h3 style="color: #F8FAFC; border-bottom: 1px solid #334155; padding-bottom: 8px; font-size: 15px; margin-top: 25px;">
+            Itens Entregues
+          </h3>
+          <table style="width: 100%; border-collapse: collapse; margin-bottom: 25px;">
+            <tbody>
+              ${itemsHtml}
+            </tbody>
+          </table>
+        ` : ''}
+
+        <div style="background-color: #0F172A; border-radius: 8px; padding: 18px; margin-bottom: 25px;">
+          <p style="color: #F8FAFC; margin: 0 0 8px 0; font-weight: bold; font-size: 14px;">
+            Endereço de Entrega:
+          </p>
+          <p style="color: #94A3B8; font-size: 13px; line-height: 1.5; margin: 0;">
+            ${order.street}, ${order.number} ${order.complement ? `- ${order.complement}` : ''}<br>
+            ${order.neighborhood} — ${order.city}/${order.state}<br>
+            CEP: ${order.postalCode}
+          </p>
+        </div>
+
+        <div style="text-align: center; border-top: 1px solid #1E293B; padding-top: 20px;">
+          <p style="color: #CBD5E1; font-size: 14px; margin: 0 0 8px 0;">
+            Precisa de alguma troca ou suporte?
+          </p>
+          <p style="color: #94A3B8; font-size: 13px; margin: 0;">
+            Nossa equipe de atendimento da <strong style="color: #CCA45E;">${store.name}</strong> está à sua disposição. Basta responder a este e-mail ou chamar no WhatsApp oficial!
+          </p>
+        </div>
+      `,
+    });
+
+    return this.sendMail({
+      to: order.customerEmail,
+      subject: `Seu pedido #${order.orderNumber} foi entregue com sucesso! 🛍️ | ${store.name}`,
       html,
     });
   }
