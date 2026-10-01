@@ -10,19 +10,31 @@ import { VerifyEmailDto } from './dto/verify-email.dto';
 import { RefreshTokenDto } from './dto/refresh-token.dto';
 import { comparePasswords } from '../common/utils/hash.util';
 import * as crypto from 'crypto';
+import { OAuth2Client } from 'google-auth-library';
+import { ConfigService } from '@nestjs/config';
 
 @Injectable()
 export class AuthService {
+  private googleClient: OAuth2Client;
+
   constructor(
     private readonly usersService: UsersService,
     private readonly prisma: PrismaService,
     private readonly jwtService: JwtService,
-  ) {}
+    private readonly configService: ConfigService,
+  ) {
+    const clientId = this.configService.get<string>('GOOGLE_CLIENT_ID');
+    this.googleClient = new OAuth2Client(clientId);
+  }
 
   async validateUser(loginDto: LoginDto) {
     const user = await this.usersService.findOneByEmail(loginDto.email);
     if (!user) {
       throw new UnauthorizedException('E-mail ou senha incorretos.');
+    }
+
+    if (!user.password) {
+      throw new UnauthorizedException('Esta conta foi cadastrada via Google. Por favor, faça login com o Google.');
     }
 
     const isPasswordValid = await comparePasswords(loginDto.password, user.password);
@@ -134,11 +146,118 @@ export class AuthService {
     }
   }
 
+  async loginWithGoogle(credential: string) {
+    const clientId = this.configService.get<string>('GOOGLE_CLIENT_ID');
+    let payload: any;
+
+    try {
+      if (clientId) {
+        const ticket = await this.googleClient.verifyIdToken({
+          idToken: credential,
+          audience: clientId,
+        });
+        payload = ticket.getPayload();
+      } else {
+        // Fallback or development verify via tokeninfo
+        const res = await fetch(`https://oauth2.googleapis.com/tokeninfo?id_token=${encodeURIComponent(credential)}`);
+        if (!res.ok) {
+          throw new Error('Falha ao validar token junto ao Google.');
+        }
+        payload = await res.json();
+      }
+    } catch (err: any) {
+      // Direct tokeninfo fallback
+      try {
+        const res = await fetch(`https://oauth2.googleapis.com/tokeninfo?id_token=${encodeURIComponent(credential)}`);
+        if (res.ok) {
+          payload = await res.json();
+        } else {
+          throw new UnauthorizedException('Token do Google inválido ou expirado.');
+        }
+      } catch (inner) {
+        throw new UnauthorizedException('Token do Google inválido ou expirado.');
+      }
+    }
+
+    if (!payload || !payload.email) {
+      throw new UnauthorizedException('Não foi possível obter o e-mail da conta Google.');
+    }
+
+    const email = payload.email.toLowerCase().trim();
+    const googleId = payload.sub;
+    const name = payload.name || payload.given_name || email.split('@')[0];
+    const avatar = payload.picture || null;
+
+    let user = await this.prisma.user.findFirst({
+      where: {
+        OR: [
+          { googleId },
+          { email },
+        ],
+      },
+    });
+
+    if (user) {
+      if (!user.googleId || (!user.avatar && avatar)) {
+        user = await this.prisma.user.update({
+          where: { id: user.id },
+          data: {
+            googleId: user.googleId || googleId,
+            avatar: user.avatar || avatar,
+            emailVerified: true,
+          },
+        });
+      }
+    } else {
+      user = await this.prisma.user.create({
+        data: {
+          name,
+          email,
+          googleId,
+          avatar,
+          role: 'CUSTOMER',
+          emailVerified: true,
+          active: true,
+        },
+      });
+    }
+
+    if (!user.active) {
+      throw new UnauthorizedException('Sua conta está desativada.');
+    }
+
+    return this.generateTokens(user);
+  }
+
+  async getProfile(userId: string) {
+    const user = await this.prisma.user.findUnique({
+      where: { id: userId },
+      select: {
+        id: true,
+        name: true,
+        email: true,
+        role: true,
+        avatar: true,
+        phone: true,
+        createdAt: true,
+        _count: {
+          select: { orders: true },
+        },
+      },
+    });
+
+    if (!user) {
+      throw new BadRequestException('Usuário não encontrado.');
+    }
+
+    return user;
+  }
+
   async generateTokens(user: any) {
     const payload = { email: user.email, sub: user.id, role: user.role };
     const accessToken = this.jwtService.sign(payload);
     
-    // Generate refresh token (e.g. valid for 7 days)
+    // Generate refresh token (valid for 7 days)
     const refreshToken = this.jwtService.sign(payload, {
       expiresIn: '7d',
     });
@@ -151,7 +270,10 @@ export class AuthService {
         name: user.name,
         email: user.email,
         role: user.role,
+        avatar: user.avatar || null,
+        phone: user.phone || null,
       },
     };
   }
 }
+

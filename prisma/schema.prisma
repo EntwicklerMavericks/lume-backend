@@ -14,9 +14,12 @@ model User {
   id                    String    @id @default(uuid())
   name                  String
   email                 String    @unique
-  password              String
+  password              String?
   active                Boolean   @default(true)
   role                  String    @default("CUSTOMER")
+  googleId              String?   @unique @map("google_id")
+  avatar                String?   @map("avatar") @db.LongText
+  phone                 String?
   emailVerified         Boolean   @default(false) @map("email_verified")
   verificationToken     String?   @map("verification_token")
   resetPasswordToken    String?   @map("reset_password_token")
@@ -25,6 +28,7 @@ model User {
   updatedAt             DateTime  @updatedAt @map("updated_at")
 
   orders                Order[]
+  cart                  Cart?
 
   @@index([verificationToken])
   @@index([resetPasswordToken])
@@ -68,6 +72,7 @@ model Product {
   category         Category       @relation(fields: [categoryId], references: [id])
 
   images           ProductImage[]
+  cartItems        CartItem[]
 
   createdAt        DateTime       @default(now()) @map("created_at")
   updatedAt        DateTime       @updatedAt @map("updated_at")
@@ -207,4 +212,33 @@ model StoreSettings {
   updatedAt       DateTime @updatedAt @map("updated_at")
 
   @@map("store_settings")
+}
+
+model Cart {
+  id        String     @id @default(uuid())
+  userId    String     @unique @map("user_id")
+  user      User       @relation(fields: [userId], references: [id], onDelete: Cascade)
+  items     CartItem[]
+  createdAt DateTime   @default(now()) @map("created_at")
+  updatedAt DateTime   @updatedAt @map("updated_at")
+
+  @@map("carts")
+}
+
+model CartItem {
+  id        String   @id @default(uuid())
+  cartId    String   @map("cart_id")
+  cart      Cart     @relation(fields: [cartId], references: [id], onDelete: Cascade)
+  productId String   @map("product_id")
+  product   Product  @relation(fields: [productId], references: [id], onDelete: Cascade)
+  size      String?
+  color     String?
+  quantity  Int      @default(1)
+  createdAt DateTime @default(now()) @map("created_at")
+  updatedAt DateTime @updatedAt @map("updated_at")
+
+  @@unique([cartId, productId, size, color])
+  @@index([cartId])
+  @@index([productId])
+  @@map("cart_items")
 }

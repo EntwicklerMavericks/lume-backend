@@ -11,8 +11,10 @@ import { ProductsModule } from './products/products.module';
 import { PaymentsModule } from './payments/payments.module';
 import { OrdersModule } from './orders/orders.module';
 import { SettingsModule } from './settings/settings.module';
+import { CartModule } from './cart/cart.module';
 import { APP_GUARD } from '@nestjs/core';
 import { JwtAuthGuard } from './common/guards/jwt-auth.guard';
+import { RolesGuard } from './common/guards/roles.guard';
 
 @Module({
   imports: [
@@ -28,6 +30,7 @@ import { JwtAuthGuard } from './common/guards/jwt-auth.guard';
     PaymentsModule,
     OrdersModule,
     SettingsModule,
+    CartModule,
   ],
   controllers: [AppController],
   providers: [
@@ -35,6 +38,10 @@ import { JwtAuthGuard } from './common/guards/jwt-auth.guard';
     {
       provide: APP_GUARD,
       useClass: JwtAuthGuard,
+    },
+    {
+      provide: APP_GUARD,
+      useClass: RolesGuard,
     },
   ],
 })

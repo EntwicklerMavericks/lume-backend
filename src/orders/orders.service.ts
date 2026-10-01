@@ -47,6 +47,30 @@ export class OrdersService {
     };
   }
 
+  async findByUserId(userId: string) {
+    const user = await this.prisma.user.findUnique({
+      where: { id: userId },
+      select: { email: true },
+    });
+
+    const where: any = {
+      OR: [
+        { userId },
+        ...(user?.email ? [{ customerEmail: user.email }] : []),
+      ],
+    };
+
+    return this.prisma.order.findMany({
+      where,
+      include: {
+        items: true,
+      },
+      orderBy: {
+        createdAt: 'desc',
+      },
+    });
+  }
+
   async findOne(id: string) {
     const order = await this.prisma.order.findFirst({
       where: {

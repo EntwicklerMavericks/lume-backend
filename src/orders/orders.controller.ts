@@ -5,19 +5,30 @@ import {
   Param,
   Patch,
   Query,
+  Request,
   UseGuards,
 } from '@nestjs/common';
 import { OrdersService } from './orders.service';
 import { UpdateOrderStatusDto } from './dto/update-order-status.dto';
 import { Public } from '../common/decorators/public.decorator';
+import { Roles } from '../common/decorators/roles.decorator';
 
 @Controller('orders')
 export class OrdersController {
   constructor(private readonly ordersService: OrdersService) {}
 
   /**
+   * Listar pedidos do cliente logado (Customer ou Admin)
+   */
+  @Get('my-orders')
+  async findMyOrders(@Request() req: any) {
+    return this.ordersService.findByUserId(req.user.sub);
+  }
+
+  /**
    * Listar pedidos (Admin)
    */
+  @Roles('ADMIN')
   @Get()
   async findAll(
     @Query('status') status?: string,
@@ -31,6 +42,7 @@ export class OrdersController {
   /**
    * Estatísticas de pedidos para dashboard (Admin)
    */
+  @Roles('ADMIN')
   @Get('stats')
   async getStats() {
     return this.ordersService.getStats();
@@ -48,6 +60,7 @@ export class OrdersController {
   /**
    * Atualizar status do pedido (Admin)
    */
+  @Roles('ADMIN')
   @Patch(':id/status')
   async updateStatus(
     @Param('id') id: string,
