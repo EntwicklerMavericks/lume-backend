@@ -48,7 +48,22 @@ export class PaymentsService {
       state: dto.address.state,
     });
 
-    // 4. Tratar método de pagamento
+    // 4. Identificar ou vincular ID de usuário cliente
+    let finalUserId = dto.userId;
+    if (!finalUserId && dto.customerEmail) {
+      try {
+        const existingUser = await this.prisma.user.findUnique({
+          where: { email: dto.customerEmail.toLowerCase().trim() },
+        });
+        if (existingUser) {
+          finalUserId = existingUser.id;
+        }
+      } catch (err: any) {
+        this.logger.warn(`Não foi possível vincular usuário por e-mail: ${err?.message}`);
+      }
+    }
+
+    // 5. Tratar método de pagamento
     if (dto.paymentMethod === 'PIX') {
       // Cria a cobrança PIX no Asaas
       const pixResult = await this.asaasService.createPixPayment({
@@ -87,7 +102,7 @@ export class PaymentsService {
           pixCopiaECola: pixResult.copiaECola,
           pixExpiresAt: pixResult.expiresAt,
           customerNotes: dto.customerNotes,
-          userId: dto.userId,
+          userId: finalUserId,
           items: {
             create: dto.items.map((item) => ({
               productId: item.productId,
@@ -186,7 +201,7 @@ export class PaymentsService {
           asaasPaymentId: cardResult.paymentId,
           installments: dto.installments || 1,
           customerNotes: dto.customerNotes,
-          userId: dto.userId,
+          userId: finalUserId,
           items: {
             create: dto.items.map((item) => ({
               productId: item.productId,
