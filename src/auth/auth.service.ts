@@ -146,19 +146,17 @@ export class AuthService {
     const emailSent = await this.mailService.sendPasswordResetCode(user.email, rawCode, user.name);
 
     if (!emailSent) {
-      this.logger.warn(`[AuthService] E-mail não pôde ser entregue pelo provedor para ${user.email}. Disponibilizando código de teste.`);
+      this.logger.warn(`[AuthService] E-mail não pôde ser entregue pelo provedor para ${user.email}.`);
       return {
         success: true,
         emailSent: false,
-        devCode: rawCode,
-        message: 'Código gerado com sucesso! (Modo de teste: o código foi disponibilizado na tela e no console)',
+        message: 'Código de verificação enviado! Por favor, verifique sua caixa de entrada e spam.',
       };
     }
 
     return {
       success: true,
       emailSent: true,
-      devCode: process.env.NODE_ENV !== 'production' ? rawCode : undefined,
       message: 'Código de verificação de 6 dígitos enviado para seu e-mail.',
     };
   }
