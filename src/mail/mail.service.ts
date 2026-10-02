@@ -109,7 +109,6 @@ export class MailService {
         } else {
           const errData: any = await res.json().catch(() => ({}));
           this.logger.error(`[MailService:Resend] Falha na API do Resend (${res.status}): ${errData?.message || JSON.stringify(errData)}`);
-          return false;
         }
       } catch (err) {
         this.logger.error('[MailService:Resend] Erro ao disparar via Resend:', err);
@@ -134,11 +133,9 @@ export class MailService {
       }
     }
 
-    // 3. Fallback: Modo Simulação / Log (Sem credenciais configuradas)
-    this.logger.log(`[MailService:Simulador] E-mail não enviado fisicamente (sem RESEND_API_KEY ou SMTP configurado).`);
-    this.logger.log(`[MailService:Simulador] Destinatário: ${options.to}`);
-    this.logger.log(`[MailService:Simulador] Assunto: ${options.subject}`);
-    return true;
+    // 3. Fallback: Modo Simulação / Log (Sem credenciais configuradas ou falha no envio)
+    this.logger.warn(`[MailService] E-mail não enviado fisicamente para ${options.to}. Assunto: "${options.subject}"`);
+    return false;
   }
 
   // ==========================================

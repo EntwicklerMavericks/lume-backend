@@ -1,4 +1,4 @@
-import { Controller, Post, Get, Patch, Body, HttpCode, HttpStatus, Request } from '@nestjs/common';
+import { Controller, Post, Get, Patch, Body, Query, HttpCode, HttpStatus, Request } from '@nestjs/common';
 import { AuthService } from './auth.service';
 import { LoginDto } from './dto/login.dto';
 import { GoogleLoginDto } from './dto/google-login.dto';
@@ -20,6 +20,12 @@ export class AuthController {
   @HttpCode(HttpStatus.OK)
   login(@Body() loginDto: LoginDto) {
     return this.authService.login(loginDto);
+  }
+
+  @Public()
+  @Get('check-email')
+  checkEmail(@Query('email') email: string) {
+    return this.authService.checkEmailExists(email);
   }
 
   @Public()

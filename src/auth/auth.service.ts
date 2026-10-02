@@ -1,4 +1,4 @@
-import { Injectable, UnauthorizedException, BadRequestException } from '@nestjs/common';
+import { Injectable, UnauthorizedException, BadRequestException, NotFoundException, Logger } from '@nestjs/common';
 import { JwtService } from '@nestjs/jwt';
 import { UsersService } from '../users/users.service';
 import { PrismaService } from '../prisma/prisma.service';
@@ -18,6 +18,7 @@ import { MailService } from '../mail/mail.service';
 
 @Injectable()
 export class AuthService {
+  private readonly logger = new Logger(AuthService.name);
   private googleClient: OAuth2Client;
 
   constructor(
@@ -74,18 +75,33 @@ export class AuthService {
     };
   }
 
+  async checkEmailExists(email: string) {
+    if (!email || !email.includes('@')) {
+      return { exists: false };
+    }
+    const user = await this.prisma.user.findUnique({
+      where: { email: email.toLowerCase().trim() },
+      select: { id: true, name: true, active: true },
+    });
+    return {
+      exists: !!user && user.active,
+      name: user?.name,
+    };
+  }
+
   async forgotPassword(forgotPasswordDto: ForgotPasswordDto) {
     const email = forgotPasswordDto.email.toLowerCase().trim();
     const user = await this.prisma.user.findUnique({
       where: { email },
     });
 
-    // 1. Prevenção de enumeração de contas (timing e existência)
-    if (!user || !user.active) {
-      return {
-        success: true,
-        message: 'Se o e-mail informado estiver cadastrado, enviamos um código de segurança de 6 dígitos.',
-      };
+    // 1. Verificação rigorosa se o e-mail existe no banco de dados
+    if (!user) {
+      throw new NotFoundException('Nenhuma conta foi encontrada com este e-mail. Verifique o endereço digitado ou cadastre-se.');
+    }
+
+    if (!user.active) {
+      throw new BadRequestException('Esta conta está inativa. Entre em contato com o suporte da loja.');
     }
 
     // 2. Proteção contra inundação / Anti-flood (cooldown de 60 segundos)
@@ -121,11 +137,28 @@ export class AuthService {
       },
     });
 
+    // Log em destaque no terminal do backend para desenvolvimento / monitoramento
+    this.logger.log(`\n=============================================================`);
+    this.logger.log(`🔑 [AUTH] CÓDIGO DE RECUPERAÇÃO GERADO: [ ${rawCode} ] PARA ${user.email}`);
+    this.logger.log(`=============================================================\n`);
+
     // 5. Envio do e-mail com o código de 6 dígitos via MailService
-    this.mailService.sendPasswordResetCode(user.email, rawCode, user.name).catch(() => {});
+    const emailSent = await this.mailService.sendPasswordResetCode(user.email, rawCode, user.name);
+
+    if (!emailSent) {
+      this.logger.warn(`[AuthService] E-mail não pôde ser entregue pelo provedor para ${user.email}. Disponibilizando código de teste.`);
+      return {
+        success: true,
+        emailSent: false,
+        devCode: rawCode,
+        message: 'Código gerado com sucesso! (Modo de teste: o código foi disponibilizado na tela e no console)',
+      };
+    }
 
     return {
       success: true,
+      emailSent: true,
+      devCode: process.env.NODE_ENV !== 'production' ? rawCode : undefined,
       message: 'Código de verificação de 6 dígitos enviado para seu e-mail.',
     };
   }
