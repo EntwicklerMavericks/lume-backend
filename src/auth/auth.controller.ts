@@ -1,4 +1,4 @@
-import { Controller, Post, Get, Body, HttpCode, HttpStatus, Request } from '@nestjs/common';
+import { Controller, Post, Get, Patch, Body, HttpCode, HttpStatus, Request } from '@nestjs/common';
 import { AuthService } from './auth.service';
 import { LoginDto } from './dto/login.dto';
 import { GoogleLoginDto } from './dto/google-login.dto';
@@ -7,6 +7,7 @@ import { ForgotPasswordDto } from './dto/forgot-password.dto';
 import { ResetPasswordDto } from './dto/reset-password.dto';
 import { VerifyEmailDto } from './dto/verify-email.dto';
 import { RefreshTokenDto } from './dto/refresh-token.dto';
+import { UpdateProfileDto } from './dto/update-profile.dto';
 import { Public } from '../common/decorators/public.decorator';
 
 @Controller('auth')
@@ -29,7 +30,14 @@ export class AuthController {
 
   @Get('me')
   getProfile(@Request() req: any) {
-    return this.authService.getProfile(req.user.sub);
+    const userId = req.user?.id || req.user?.sub;
+    return this.authService.getProfile(userId);
+  }
+
+  @Patch('profile')
+  updateProfile(@Request() req: any, @Body() updateProfileDto: UpdateProfileDto) {
+    const userId = req.user?.id || req.user?.sub;
+    return this.authService.updateProfile(userId, updateProfileDto);
   }
 
   @Public()

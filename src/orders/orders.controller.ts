@@ -22,7 +22,8 @@ export class OrdersController {
    */
   @Get('my-orders')
   async findMyOrders(@Request() req: any) {
-    return this.ordersService.findByUserId(req.user.sub);
+    const userId = req.user?.id || req.user?.sub;
+    return this.ordersService.findByUserId(userId);
   }
 
   /**

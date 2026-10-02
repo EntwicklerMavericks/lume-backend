@@ -8,6 +8,7 @@ import { ForgotPasswordDto } from './dto/forgot-password.dto';
 import { ResetPasswordDto } from './dto/reset-password.dto';
 import { VerifyEmailDto } from './dto/verify-email.dto';
 import { RefreshTokenDto } from './dto/refresh-token.dto';
+import { UpdateProfileDto } from './dto/update-profile.dto';
 import { comparePasswords } from '../common/utils/hash.util';
 import * as crypto from 'crypto';
 import { OAuth2Client } from 'google-auth-library';
@@ -251,6 +252,52 @@ export class AuthService {
     }
 
     return user;
+  }
+
+  async updateProfile(userId: string, dto: UpdateProfileDto) {
+    if (!userId) {
+      throw new UnauthorizedException('Usuário não autenticado.');
+    }
+
+    const user = await this.prisma.user.findUnique({
+      where: { id: userId },
+    });
+
+    if (!user) {
+      throw new BadRequestException('Usuário não encontrado.');
+    }
+
+    const data: any = {};
+    if (dto.name !== undefined) {
+      const trimmedName = dto.name.trim();
+      if (trimmedName.length > 0) {
+        data.name = trimmedName;
+      }
+    }
+
+    if (dto.phone !== undefined) {
+      data.phone = dto.phone ? dto.phone.trim() : null;
+    }
+
+    if (dto.avatar !== undefined) {
+      data.avatar = dto.avatar ? dto.avatar.trim() : null;
+    }
+
+    const updatedUser = await this.prisma.user.update({
+      where: { id: userId },
+      data,
+      select: {
+        id: true,
+        name: true,
+        email: true,
+        role: true,
+        avatar: true,
+        phone: true,
+        createdAt: true,
+      },
+    });
+
+    return updatedUser;
   }
 
   async generateTokens(user: any) {

@@ -48,6 +48,10 @@ export class OrdersService {
   }
 
   async findByUserId(userId: string) {
+    if (!userId) {
+      return [];
+    }
+
     const user = await this.prisma.user.findUnique({
       where: { id: userId },
       select: { email: true },
