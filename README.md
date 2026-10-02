@@ -192,7 +192,32 @@ npm run start:prod
 
 ---
 
-## 📱 Contato & Licença
+## 👨‍💻 Desenvolvedor & Contato Comercial
 
-- **Projeto:** Lume
-- **Licença:** Privada / Comercial
+Desenvolvido por **Eduardo Theodoro**.
+
+<div align="center">
+
+  [![LinkedIn](https://img.shields.io/badge/LinkedIn-Eduardo%20Theodoro-0077B5?style=for-the-badge&logo=linkedin&logoColor=white)](https://www.linkedin.com/in/eduardot97)
+  [![WhatsApp](https://img.shields.io/badge/WhatsApp-Conversar%20no%20WhatsApp-25D366?style=for-the-badge&logo=whatsapp&logoColor=white)](https://wa.me/5511961742713?text=Ol%C3%A1%20Eduardo,%20vim%20pelo%20Lume%20Backend!)
+  [![E-mail 1](https://img.shields.io/badge/E--mail-entwicklermavericks%40gmail.com-D14836?style=for-the-badge&logo=gmail&logoColor=white)](mailto:entwicklermavericks@gmail.com)
+  [![E-mail 2](https://img.shields.io/badge/E--mail-eduardotheodorofegit%40gmail.com-EA4335?style=for-the-badge&logo=gmail&logoColor=white)](mailto:eduardotheodorofegit@gmail.com)
+
+</div>
+
+<br />
+
+| Canal | Informação / Link Direto |
+| :--- | :--- |
+| 👤 **Nome** | **Eduardo Theodoro** |
+| 💼 **LinkedIn** | [linkedin.com/in/eduardot97](https://www.linkedin.com/in/eduardot97) |
+| 📱 **WhatsApp** | [**+55 (11) 96174-2713**](https://wa.me/5511961742713?text=Ol%C3%A1%20Eduardo,%20vim%20pelo%20Lume%20Backend!) |
+| 📧 **E-mail Principal** | [entwicklermavericks@gmail.com](mailto:entwicklermavericks@gmail.com) |
+| 📧 **E-mail Dev / Git** | [eduardotheodorofegit@gmail.com](mailto:eduardotheodorofegit@gmail.com) |
+| 🛡️ **Licença** | Privada / Comercial |
+
+---
+
+<div align="center">
+  <sub>© 2026 Lume Commerce — Todos os direitos reservados.</sub>
+</div>
