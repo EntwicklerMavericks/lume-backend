@@ -409,6 +409,54 @@ export class MailService {
     });
   }
 
+  /**
+   * E-mail 5: Código de Verificação para Redefinição de Senha (Segurança)
+   */
+  async sendPasswordResetCode(email: string, code: string, customerName?: string): Promise<boolean> {
+    if (!email) return false;
+
+    const store = await this.getStoreInfo();
+    const firstName = customerName ? customerName.split(' ')[0] : 'Cliente';
+
+    const html = this.buildBaseEmailLayout({
+      storeName: store.name,
+      title: 'Código de Recuperação de Senha',
+      subtitle: `Olá, ${firstName}! Recebemos uma solicitação para redefinir a senha da sua conta.`,
+      content: `
+        <div style="background-color: #0F172A; border: 2px dashed #CCA45E; border-radius: 12px; padding: 26px 20px; text-align: center; margin: 25px 0;">
+          <p style="color: #94A3B8; font-size: 13px; text-transform: uppercase; letter-spacing: 1.5px; margin: 0 0 10px 0; font-weight: 600;">
+            Seu Código de Verificação
+          </p>
+          <div style="font-size: 38px; font-weight: 800; letter-spacing: 8px; color: #CCA45E; margin: 8px 0 12px 0; font-family: 'Courier New', Courier, monospace;">
+            ${code}
+          </div>
+          <div style="display: inline-block; background-color: rgba(239, 68, 68, 0.15); border: 1px solid rgba(239, 68, 68, 0.4); border-radius: 20px; padding: 4px 14px;">
+            <span style="color: #F87171; font-size: 12px; font-weight: 600;">⏰ Válido por 15 minutos</span>
+          </div>
+        </div>
+
+        <div style="background-color: #020617; border-left: 4px solid #38BDF8; border-radius: 6px; padding: 16px; margin: 20px 0;">
+          <p style="color: #F8FAFC; margin: 0 0 6px 0; font-weight: bold; font-size: 14px;">
+            Dica de Segurança
+          </p>
+          <p style="color: #94A3B8; margin: 0; font-size: 13px; line-height: 1.5;">
+            Nunca compartilhe este código com terceiros. A equipe da ${store.name} nunca entrará em contato solicitando este código de segurança.
+          </p>
+        </div>
+
+        <p style="color: #64748B; font-size: 12px; line-height: 1.5; margin: 20px 0 0 0; text-align: center;">
+          Se você não solicitou a redefinição de senha, ignore este e-mail. Sua conta e senha permanecem totalmente seguras.
+        </p>
+      `,
+    });
+
+    return this.sendMail({
+      to: email,
+      subject: `Seu código de segurança: ${code} | ${store.name}`,
+      html,
+    });
+  }
+
   // ==========================================
   // TEMPLATE HTML BASE RESPONSIVO E ELEGANTE
   // ==========================================

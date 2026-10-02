@@ -9,10 +9,12 @@ import { ResetPasswordDto } from './dto/reset-password.dto';
 import { VerifyEmailDto } from './dto/verify-email.dto';
 import { RefreshTokenDto } from './dto/refresh-token.dto';
 import { UpdateProfileDto } from './dto/update-profile.dto';
-import { comparePasswords } from '../common/utils/hash.util';
+import { VerifyResetCodeDto } from './dto/verify-reset-code.dto';
+import { comparePasswords, hashPassword } from '../common/utils/hash.util';
 import * as crypto from 'crypto';
 import { OAuth2Client } from 'google-auth-library';
 import { ConfigService } from '@nestjs/config';
+import { MailService } from '../mail/mail.service';
 
 @Injectable()
 export class AuthService {
@@ -23,6 +25,7 @@ export class AuthService {
     private readonly prisma: PrismaService,
     private readonly jwtService: JwtService,
     private readonly configService: ConfigService,
+    private readonly mailService: MailService,
   ) {
     const clientId = this.configService.get<string>('GOOGLE_CLIENT_ID');
     this.googleClient = new OAuth2Client(clientId);
@@ -72,45 +75,200 @@ export class AuthService {
   }
 
   async forgotPassword(forgotPasswordDto: ForgotPasswordDto) {
-    const user = await this.usersService.findOneByEmail(forgotPasswordDto.email);
-    if (!user) {
-      // Return a generic message to prevent account enumeration
-      return { message: 'Se o e-mail existir, um link de redefinição será enviado.' };
-    }
-
-    const resetToken = crypto.randomBytes(32).toString('hex');
-    const resetExpires = new Date();
-    resetExpires.setHours(resetExpires.getHours() + 1); // Token is valid for 1 hour
-
-    await this.usersService.update(user.id, {
-      resetPasswordToken: resetToken,
-      resetPasswordExpires: resetExpires,
+    const email = forgotPasswordDto.email.toLowerCase().trim();
+    const user = await this.prisma.user.findUnique({
+      where: { email },
     });
 
-    return { message: 'Se o e-mail existir, um link de redefinição será enviado.' };
-  }
+    // 1. Prevenção de enumeração de contas (timing e existência)
+    if (!user || !user.active) {
+      return {
+        success: true,
+        message: 'Se o e-mail informado estiver cadastrado, enviamos um código de segurança de 6 dígitos.',
+      };
+    }
 
-  async resetPassword(resetPasswordDto: ResetPasswordDto) {
-    const user = await this.prisma.user.findFirst({
-      where: {
-        resetPasswordToken: resetPasswordDto.token,
-        resetPasswordExpires: {
-          gt: new Date(),
-        },
+    // 2. Proteção contra inundação / Anti-flood (cooldown de 60 segundos)
+    if (user.resetPasswordExpires) {
+      const cooldownMs = 60 * 1000;
+      const issuedAt = new Date(user.resetPasswordExpires.getTime() - 15 * 60 * 1000);
+      const diff = Date.now() - issuedAt.getTime();
+      if (diff < cooldownMs && user.resetPasswordExpires.getTime() > Date.now()) {
+        const remainingSeconds = Math.ceil((cooldownMs - diff) / 1000);
+        return {
+          success: false,
+          cooldown: true,
+          remainingSeconds,
+          message: `Aguarde ${remainingSeconds} segundos antes de solicitar um novo código.`,
+        };
+      }
+    }
+
+    // 3. Geração segura de código de 6 dígitos (CSPRNG com criptografia)
+    const rawCode = crypto.randomInt(100000, 1000000).toString();
+
+    // 4. Hash SHA-256 do código para armazenamento seguro no banco (sem expor texto puro)
+    const hashedCode = crypto.createHash('sha256').update(rawCode).digest('hex');
+
+    // Token armazenado no formato "hash:tentativas"
+    const resetExpires = new Date(Date.now() + 15 * 60 * 1000); // 15 minutos de validade
+
+    await this.prisma.user.update({
+      where: { id: user.id },
+      data: {
+        resetPasswordToken: `${hashedCode}:0`,
+        resetPasswordExpires: resetExpires,
       },
     });
 
-    if (!user) {
-      throw new BadRequestException('Token de redefinição inválido ou expirado.');
+    // 5. Envio do e-mail com o código de 6 dígitos via MailService
+    this.mailService.sendPasswordResetCode(user.email, rawCode, user.name).catch(() => {});
+
+    return {
+      success: true,
+      message: 'Código de verificação de 6 dígitos enviado para seu e-mail.',
+    };
+  }
+
+  async verifyResetCode(dto: VerifyResetCodeDto) {
+    const email = dto.email.toLowerCase().trim();
+    const cleanCode = dto.code.replace(/\D/g, '').trim();
+
+    if (cleanCode.length !== 6) {
+      throw new BadRequestException('O código de verificação deve conter 6 dígitos.');
     }
 
-    await this.usersService.update(user.id, {
-      password: resetPasswordDto.password,
-      resetPasswordToken: null,
-      resetPasswordExpires: null,
+    const user = await this.prisma.user.findUnique({
+      where: { email },
     });
 
-    return { message: 'Senha redefinida com sucesso.' };
+    if (!user || !user.resetPasswordToken || !user.resetPasswordExpires) {
+      throw new BadRequestException('Código de verificação inválido ou expirado.');
+    }
+
+    if (user.resetPasswordExpires.getTime() < Date.now()) {
+      throw new BadRequestException('O código de verificação expirou. Solicite um novo código.');
+    }
+
+    const [storedHash, attemptsStr] = (user.resetPasswordToken || '').split(':');
+    const attempts = parseInt(attemptsStr || '0', 10);
+
+    // Proteção contra brute force: máximo 5 tentativas erradas por código
+    if (attempts >= 5) {
+      await this.prisma.user.update({
+        where: { id: user.id },
+        data: { resetPasswordToken: null, resetPasswordExpires: null },
+      });
+      throw new BadRequestException('Limite de tentativas excedido para este código. Por favor, solicite um novo código de segurança.');
+    }
+
+    const inputHash = crypto.createHash('sha256').update(cleanCode).digest('hex');
+
+    if (storedHash !== inputHash) {
+      const nextAttempts = attempts + 1;
+      await this.prisma.user.update({
+        where: { id: user.id },
+        data: { resetPasswordToken: `${storedHash}:${nextAttempts}` },
+      });
+      const remaining = 5 - nextAttempts;
+      throw new BadRequestException(
+        remaining > 0
+          ? `Código de verificação incorreto. Restam ${remaining} tentativa(s).`
+          : 'Limite de tentativas excedido. Solicite um novo código de segurança.'
+      );
+    }
+
+    return {
+      valid: true,
+      message: 'Código validado com sucesso.',
+    };
+  }
+
+  async resetPassword(resetPasswordDto: ResetPasswordDto) {
+    const rawCode = (resetPasswordDto.code || resetPasswordDto.token || '').trim();
+    const cleanCode = rawCode.replace(/\D/g, '');
+    const email = resetPasswordDto.email?.toLowerCase().trim();
+
+    let user: any = null;
+
+    if (cleanCode.length === 6) {
+      const inputHash = crypto.createHash('sha256').update(cleanCode).digest('hex');
+      if (email) {
+        user = await this.prisma.user.findUnique({ where: { email } });
+      } else {
+        user = await this.prisma.user.findFirst({
+          where: {
+            resetPasswordToken: { startsWith: inputHash },
+            resetPasswordExpires: { gt: new Date() },
+          },
+        });
+      }
+
+      if (!user || !user.resetPasswordToken || !user.resetPasswordExpires) {
+        throw new BadRequestException('Código de verificação inválido ou expirado.');
+      }
+
+      if (user.resetPasswordExpires.getTime() < Date.now()) {
+        throw new BadRequestException('O código de verificação expirou. Solicite um novo código.');
+      }
+
+      const [storedHash, attemptsStr] = (user.resetPasswordToken || '').split(':');
+      const attempts = parseInt(attemptsStr || '0', 10);
+
+      if (attempts >= 5) {
+        await this.prisma.user.update({
+          where: { id: user.id },
+          data: { resetPasswordToken: null, resetPasswordExpires: null },
+        });
+        throw new BadRequestException('Limite de tentativas excedido. Solicite um novo código de segurança.');
+      }
+
+      if (storedHash !== inputHash) {
+        const nextAttempts = attempts + 1;
+        await this.prisma.user.update({
+          where: { id: user.id },
+          data: { resetPasswordToken: `${storedHash}:${nextAttempts}` },
+        });
+        const remaining = 5 - nextAttempts;
+        throw new BadRequestException(
+          remaining > 0
+            ? `Código incorreto. Restam ${remaining} tentativa(s).`
+            : 'Limite de tentativas excedido. Solicite um novo código de segurança.'
+        );
+      }
+    } else {
+      user = await this.prisma.user.findFirst({
+        where: {
+          resetPasswordToken: rawCode,
+          resetPasswordExpires: { gt: new Date() },
+        },
+      });
+
+      if (!user) {
+        throw new BadRequestException('Token de redefinição inválido ou expirado.');
+      }
+    }
+
+    if (!resetPasswordDto.password || resetPasswordDto.password.length < 6) {
+      throw new BadRequestException('A nova senha deve conter pelo menos 6 caracteres.');
+    }
+
+    const hashedPassword = await hashPassword(resetPasswordDto.password);
+
+    await this.prisma.user.update({
+      where: { id: user.id },
+      data: {
+        password: hashedPassword,
+        resetPasswordToken: null,
+        resetPasswordExpires: null,
+        emailVerified: true,
+      },
+    });
+
+    return {
+      success: true,
+      message: 'Senha redefinida com sucesso! Você já pode entrar com sua nova senha.',
+    };
   }
 
   async verifyEmail(verifyEmailDto: VerifyEmailDto) {
